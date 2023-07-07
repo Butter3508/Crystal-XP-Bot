@@ -25,6 +25,12 @@ const client = new Client({
 client.commands = new Collection();
 client.aliases = new Collection();
 
+client.on('ready', () => {
+    setTimeout(() => {
+        console.log('[Info] Minecraft Bot sẽ chạy trong 5s')
+    }, ms('5s'))
+})
+
 client.on('messageCreate', (msg) => {
     const prefix = 'c.'
     if (!msg.content.startsWith(prefix)) return

@@ -11,9 +11,16 @@ module.exports = {
      * @param {String[]} args 
      */
     run: async(client, msg, args) => {
-        if (!args[0]) return msg.reply('Bạn phải nhập ID channel cần set')
+        if (!args[0]) return msg.reply('Bạn phải nhập ID channel cần set');
         // c.set <channel ID>
         const { guildId, channelId } = msg;
+
+        let guild = client.guilds.cache.get(guildId);
+        let member = guild.members.cache.get(msg.author.id);
+
+        if (!member.permissions.has('ADMINISTRATOR'))
+            return message.reply(`Bạn cần quyền \`ADMINISTRATOR\` để có thể dùng lệnh`)
+
         let profile = await livechat.findOne({ guildId: guildId, channelId: channelId });
         if (!profile) {
             let newProfile = new livechat({ guildId: guildId, channelId: args[0] });
