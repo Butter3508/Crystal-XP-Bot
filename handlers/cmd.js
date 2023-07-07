@@ -1,6 +1,6 @@
 const fs = require('fs')
 
-module.exports = (bot) => {
+module.exports = (client, bot) => {
     let count = 0;
     fs.readdirSync('./commands').forEach(dir => {
         const files = fs.readdirSync(`./commands/${dir}`)
@@ -8,7 +8,12 @@ module.exports = (bot) => {
         for (const file of files) {
             const cmd = require(`../commands/${dir}/${file}`);
             if (cmd.name) {
-                bot.cmds.push(cmd);
+                if (cmd.discord) {
+                    client.commands.set(cmd.name, cmd);
+                    if (cmd.aliases && Array.isArray(cmd.aliases)) cmd.aliases.forEach(alias => client.aliases.set(alias, cmd.name));
+                } else {
+                    bot.cmds.push(cmd)
+                }
                 count++
             } else { continue }
         }

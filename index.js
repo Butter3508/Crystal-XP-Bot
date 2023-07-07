@@ -1,23 +1,38 @@
 // require('dotenv').config();
 const {
     Client,
-    MessageEmbed
+    MessageEmbed,
+    Collection
 } = require('discord.js');
 const fs = require('fs');
 const yaml = require('js-yaml')
 const mineflayer = require('mineflayer')
 const tps = require('mineflayer-tps')(mineflayer);
 const ms = require('ms');
+const mcUtil = require('minecraft-server-util')
 const {
     join
 } = require('path');
 const mongoose = require('mongoose');
 const XP = require('./models/xp');
+const livechat = require('./models/live');
 const emojis = require('./emoji.json');
 
 const client = new Client({
     intents: 32767
 });
+
+client.commands = new Collection();
+client.aliases = new Collection();
+
+client.on('messageCreate', (msg) => {
+    const prefix = 'c.'
+    if (!msg.content.startsWith(prefix)) return
+    const args = msg.content.slice(prefix.length).trim().split(/ +/g);
+    const cmd = args.shift().toLowerCase();
+    const command = client.commands.get(cmd) || client.commands.get(client.aliases.get(cmd))
+    if (command) command.run(client, msg, args);
+})
 
 var data = yaml.load(
     fs.readFileSync(join(__dirname, 'config.yaml')),
@@ -62,7 +77,7 @@ function run(client) {
 
     bot.cmds = [];
 
-    require('./handlers/cmd')(bot);
+    require('./handlers/cmd')(client, bot);
 
     bot.on('windowOpen', (window) => {
         window.requiresConfirmation = false;
@@ -77,18 +92,30 @@ function run(client) {
         }
         setTimeout(() => {
             bot.chat('/anarchyvn')
-        }, ms('10s'));
+        }, ms('5s'));
         setTimeout(() => {
             bot.clickWindow(13, 0, 0)
-        }, ms('20s'));
+        }, ms('10s'));
 
     });
+
+    client.on('ready', () => {
+        setInterval(() => {
+            mcUtil.status(config.host, 25565, { enableSRV: true })
+            .then((res) => {
+                client.user.setActivity({
+                    name: `TPS: ${bot.getTps()} - Ping: ${bot.player.ping}ms - Players: ${res.players.online}`
+                })
+            })
+            .catch(e => {  })
+        }, ms('15s'))
+    })
 
 
     bot.on('end', (r) => { // Reconnect when disconnected
         console.log(`[Pay attention!] Bot's been disconnected due to ${r}.`);
         console.log(`Attempting to reconnect in 15 seconds`);
-        setTimeout(() => run, ms('15s'))
+        setTimeout(() => run(client), ms('15s'))
     })
 
 
@@ -126,18 +153,33 @@ function run(client) {
 				})
                 .catch(e => console.log(`[Alert] Failed adding XP: ${e}`));
         } else {
-            let chance = Math.random().toFixed(4);
-            if (chance >= 0.9432) {
-                addXP(bot, usr, amount);
-            }
+            let chance = Math.floor(Math.random() * 100) + 1; // 1 - 100
+            if (chance >= 80) addXP(bot, usr, amount)
         }
     })
 
+    bot.on('spawn', () => {
+        // setInterval(() => {
+        //     let tabFooter = bot.tablist.footer.toString();
+        //     let tpsTab = tabFooter.substring(16, tabFooter.indexOf('  -  '));
+        //     client.user.setActivity({
+        //         name: `${tpsTab ? tpsTab : 'infinite'}`
+        //     });
+        // }, ms('15s'));
+
+        setInterval(() => {
+            let content = fs.readFileSync(join(__dirname, 'docs.txt'), 'utf-8');
+            let texts = content.split('\n');
+            let sending = texts[Math.floor(Math.random() * texts.length)];
+            bot.chat(sending);
+        }, ms('10m'))
+    })
 
     // Discord events
 
     bot.on('messagestr', async (msg) => {
         // Output from game
+        console.log(`[Mind-reading] ${msg}`)
         embedSend(msg, config.channel);
     });
 
@@ -147,13 +189,12 @@ function run(client) {
 		if (msg.author.bot) return
         msg.react('✅');
         let tag = msg.author.tag
-        bot?.chat(`> [${tag.substring(0, tag.indexOf('#0'))}] ${msg} | ${Math.random()}`)
+        bot?.chat(`> [${tag.substring(0, tag.indexOf('#0'))}] ${msg} | [${Math.random().toFixed(4)}]`)
     })
 
 }
 
 var patterns = {
-    discordLink: 'https://discord gg/' || 'https://discord/ gg/',
     donator: /<\[Donator\].+> (.+)/,
 	donatorp: /<\[Donator\+\].+> (.+)/,
     unknown_cmd: /(Unknown command)/,
@@ -176,7 +217,8 @@ var patterns = {
     killedByMob: RegExp(deathMsgs.killedByMob),
     advancement: RegExp(deathMsgs.advancement_granted),
     goal: RegExp(deathMsgs.goal_granted),
-    shotByMob: RegExp(deathMsgs.shotByMob)
+    shotByMob: RegExp(deathMsgs.shotByMob),
+    donate: RegExp(deathMsgs.donate)
 }
 
 
@@ -186,6 +228,8 @@ var patterns = {
  * @param {String} id
  */
 async function embedSend(msg, id) {
+    let str = msg.replace(/https:\/\/discord gg\//g, 'https://discord.gg/');
+
     const {
         discordLink,
         donator,
@@ -208,11 +252,12 @@ async function embedSend(msg, id) {
         drowned,
         killedByMob,
         killedByMobUsing,
-        shotByMob
+        shotByMob,
+        donate
     } = patterns
     let raw = new MessageEmbed()
 		.setTitle('[Mind-reading]')
-        .setDescription(msg)
+        .setDescription(msg.replace(/https:\/\/discord gg\//g, 'https://discord.gg/'))
         .setFooter({
             iconURL: client.user.avatarURL({
                 dynamic: true
@@ -221,10 +266,10 @@ async function embedSend(msg, id) {
         })
     if (msg.match(donator)) {
         raw.setColor('#fff829')
-        .setDescription(`${emojis.moneyRain} ${msg}`)
+        .setDescription(`${emojis.moneyRain} ${str}`)
     } else if (msg.match(donatorp)) {
 		raw.setColor('#d61114')
-        .setDescription(`${emojis.moneyRain} ${msg}`)
+        .setDescription(`${emojis.moneyRain} ${str}`)
 	} else if (msg.match(unknown_cmd)) {
         raw.setColor('#a6a597')
     } else if (msg.match(whisper_from) || msg.match(whisper_to)) {
@@ -238,7 +283,7 @@ async function embedSend(msg, id) {
         raw.setColor('#ff1c1c')
         .setDescription(`${emojis.stab} ${emojis.crystal} **${msg}**`)
     } else if (msg.match(suicide1) || msg.match(suicide2) || msg.match(suicide3)
-    || msg.match(fall) || msg.match(lava) || msg.match(drowned))
+    || msg.match(lava) || msg.match(drowned))
     {
         raw.setColor('#ff1c1c')
         .setDescription(`${emojis.suicide} **${msg}**`)
@@ -249,18 +294,32 @@ async function embedSend(msg, id) {
     } else if (msg.match(shotByPlayerUsing) || msg.match(shotByMob)) {
         raw.setColor('#ff1c1c')
         .setDescription(`${emojis.gun} **${msg}**`)
-    } else if (msg.includes(discordLink) || msg.includes('discord gg')) {
-        raw.setDescription(msg.replace('discord gg', 'discord.gg'))
+    } else if (msg.match(fall)) {
+        raw
+        .setColor('#ff1c1c')
+        .setDescription(`${emojis.suicide} ${emojis.fall} **${msg}**`)
+    } else if (msg.match(donate)) {
+        raw
+        .setColor('#fff829')
+        .setDescription(`${emojis.moneyRain} **${msg}**`)
     }
     else {
 		raw.setColor('#38c1f2')
 	}
 
-    const channel = await client.channels.cache.get(id);
-    if (!channel) return
-    channel.send({
-        embeds: [raw]
-    })
+    if (!id) {
+        livechat.find().then(async(datas) => datas.forEach(async data => {
+            let guild = client.guilds.cache.get(data.guildId);
+            if (!guild) return
+            let channel = guild.channels.cache.get(data.channelId)
+            if (!channel || !channel.isText()) return
+            channel.send({ embeds: [raw] }).catch(e => {})
+        }))
+    } else {
+        let channel = client.channels.cache.get(id);
+        if (!channel) return
+        channel.send({ embeds: [raw] }).catch(e => {})
+    }
 }
 
 const xpNeeded = level => level * (2 * level) + 90;
