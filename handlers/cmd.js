@@ -19,5 +19,5 @@ module.exports = (client, bot) => {
         }
     })
 
-    console.log(`[Library-Info] Loaded ${count} commands, enjoy!`)
+    console.log(`[INFO] Đã chạy ${count} lệnh!`)
 }
